@@ -1,0 +1,48 @@
+name: Build and Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:  # Allows manual triggering
+
+# Add explicit permissions for the GITHUB_TOKEN
+permissions:
+  contents: write  # Needed for creating releases and uploading assets
+  packages: write  # Needed if you want to publish to GitHub Packages
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Create package
+        run: pnpm pack
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            *.tgz
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
