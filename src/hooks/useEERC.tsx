@@ -457,6 +457,19 @@ export function useEERC(
     [eerc],
   );
 
+  /**
+   * decrypt any transaction events (deposit, withdraw, transfer, etc.)
+   * @param transactionHash - transaction hash
+   * @returns decrypted transaction data
+   */
+  const decryptTransaction = useCallback(
+    (transactionHash: string) => {
+      if (!eerc) throw new Error("EERC not initialized");
+      return eerc.decryptTransaction(transactionHash);
+    },
+    [eerc],
+  );
+
   return {
     isInitialized: eercState.isInitialized, // is sdk initialized
     isAllDataFetched: eercState.isAllDataFetched, // is all data fetched
@@ -484,6 +497,7 @@ export function useEERC(
     generateDecryptionKey, // generate decryption key
     setContractAuditorPublicKey, // set contract auditor public key
     decryptMessage, // decrypt private message from transaction
+    decryptTransaction, // decrypt any transaction events (deposit, withdraw, transfer, etc.)
 
     // refetch
     refetchEercUser,

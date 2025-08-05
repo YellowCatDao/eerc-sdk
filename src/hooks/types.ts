@@ -57,6 +57,7 @@ export type EERCHookResult = {
     address: `0x${string}`,
   ) => Promise<`0x${string}`>;
   decryptMessage: (transactionHash: string) => Promise<DecryptedMetadata>;
+  decryptTransaction: (transactionHash: string) => Promise<DecryptedTransaction | null>;
 };
 
 export type UseEncryptedBalanceHookResult = {

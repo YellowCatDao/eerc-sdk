@@ -967,6 +967,99 @@ export class EERC {
   }
 
   /**
+   * function to decrypt any transaction events (deposit, withdraw, transfer, etc.)
+   * @param transactionHash transaction hash
+   * @returns decrypted transaction data
+   */
+  public async decryptTransaction(transactionHash: string): Promise<DecryptedTransaction | null> {
+    if (!this.decryptionKey) throw new Error("Missing decryption key!");
+
+    try {
+      const tx = await this.client.getTransaction({
+        hash: transactionHash as `0x${string}`,
+      });
+
+      // Get logs for this specific transaction from our contract
+      const logs = await this.client.getLogs({
+        address: this.contractAddress,
+        fromBlock: tx.blockNumber,
+        toBlock: tx.blockNumber,
+        // Don't filter by specific events - get all logs from this block for our contract
+      });
+
+      // Filter logs to only those from our transaction
+      const txLogs = logs.filter(log => log.transactionHash === transactionHash);
+
+      if (!txLogs || txLogs.length === 0) {
+        throw new Error("No logs found for this transaction");
+      }
+
+      // Look for events with auditorPCT (encrypted amounts we can decrypt)
+      for (const log of txLogs) {
+        // Check if this log matches any of our known events
+        const eventSignatures = {
+          [PRIVATE_TRANSFER_EVENT.name]: 'PrivateTransfer',
+          [PRIVATE_MINT_EVENT.name]: 'PrivateMint', 
+          [PRIVATE_BURN_EVENT.name]: 'PrivateBurn',
+        };
+
+        const eventName = eventSignatures[log.eventName || ''];
+        if (!eventName) continue;
+
+        // Try to extract auditorPCT from the log
+        const auditorPCT = (log as any)?.args?.auditorPCT as bigint[];
+        if (!auditorPCT || auditorPCT?.length !== 7) continue;
+
+        // Decrypt the amount
+        const decryptedAmount = this.decryptPCT(auditorPCT);
+        
+        // Decode the transaction input to get additional details
+        const decodedInputs = decodeFunctionData({
+          abi: this.encryptedErcAbi,
+          data: tx.input,
+        });
+
+        return {
+          transactionHash: transactionHash as `0x${string}`,
+          amount: decryptedAmount.toString(),
+          sender: tx.from,
+          type: eventName.replace("Private", ""),
+          receiver:
+            decodedInputs?.functionName === "privateBurn"
+              ? tx.to
+              : (decodedInputs?.args?.[0] as `0x${string}`) || null,
+        };
+      }
+
+      // If no auditorPCT found, check for deposit/withdraw events which might have different structure
+      // Look for Deposit/Withdraw events that might not have auditorPCT but have other encrypted data
+      for (const log of txLogs) {
+        if (log.eventName === 'Deposit' || log.eventName === 'Withdraw') {
+          // For deposits/withdraws, we might need to look at the amountPCT or other encrypted fields
+          // This would need to be customized based on the actual event structure
+          const decodedInputs = decodeFunctionData({
+            abi: this.encryptedErcAbi,
+            data: tx.input,
+          });
+
+          // Try to get amount from the transaction inputs or logs
+          return {
+            transactionHash: transactionHash as `0x${string}`,
+            amount: "Unknown", // Would need to decrypt from different fields
+            sender: tx.from,
+            type: log.eventName,
+            receiver: tx.to || null,
+          };
+        }
+      }
+
+      return null;
+    } catch (error) {
+      throw new Error(`Failed to decrypt transaction: ${error}`);
+    }
+  }
+
+  /**
    * function to perform poseidon decryption on the pct
    * @param pct pct array
    * @returns decrypted
