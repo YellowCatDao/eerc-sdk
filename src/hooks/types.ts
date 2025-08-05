@@ -56,6 +56,7 @@ export type EERCHookResult = {
   setContractAuditorPublicKey: (
     address: `0x${string}`,
   ) => Promise<`0x${string}`>;
+  decryptMessage: (transactionHash: string) => Promise<DecryptedMetadata>;
 };
 
 export type UseEncryptedBalanceHookResult = {

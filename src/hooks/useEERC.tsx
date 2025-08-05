@@ -444,6 +444,19 @@ export function useEERC(
     [eerc],
   );
 
+  /**
+   * decrypt the private message from transaction
+   * @param transactionHash - transaction hash
+   * @returns decrypted metadata
+   */
+  const decryptMessage = useCallback(
+    (transactionHash: string) => {
+      if (!eerc) throw new Error("EERC not initialized");
+      return eerc.decryptMessage(transactionHash);
+    },
+    [eerc],
+  );
+
   return {
     isInitialized: eercState.isInitialized, // is sdk initialized
     isAllDataFetched: eercState.isAllDataFetched, // is all data fetched
@@ -470,6 +483,7 @@ export function useEERC(
     isAddressRegistered, // function for checking address is registered or not
     generateDecryptionKey, // generate decryption key
     setContractAuditorPublicKey, // set contract auditor public key
+    decryptMessage, // decrypt private message from transaction
 
     // refetch
     refetchEercUser,
