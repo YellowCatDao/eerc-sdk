@@ -419,3 +419,73 @@ export const PRIVATE_BURN_WITH_MESSAGE_ABI = [
     type: "function",
   },
 ];
+
+export const DEPOSIT_EVENT = {
+  anonymous: false,
+  inputs: [
+    {
+      indexed: true,
+      internalType: "address",
+      name: "user",
+      type: "address",
+    },
+    {
+      indexed: false,
+      internalType: "uint256",
+      name: "amount",
+      type: "uint256",
+    },
+    {
+      indexed: false,
+      internalType: "uint256",
+      name: "dust",
+      type: "uint256",
+    },
+    {
+      indexed: false,
+      internalType: "uint256",
+      name: "tokenId",
+      type: "uint256",
+    },
+  ],
+  name: "Deposit",
+  type: "event",
+};
+
+export const WITHDRAW_EVENT = {
+  anonymous: false,
+  inputs: [
+    {
+      indexed: true,
+      internalType: "address",
+      name: "user",
+      type: "address",
+    },
+    {
+      indexed: false,
+      internalType: "uint256",
+      name: "amount",
+      type: "uint256",
+    },
+    {
+      indexed: false,
+      internalType: "uint256",
+      name: "tokenId",
+      type: "uint256",
+    },
+    {
+      indexed: false,
+      internalType: "uint256[7]",
+      name: "auditorPCT",
+      type: "uint256[7]",
+    },
+    {
+      indexed: true,
+      internalType: "address",
+      name: "auditorAddress",
+      type: "address",
+    },
+  ],
+  name: "Withdraw",
+  type: "event",
+};

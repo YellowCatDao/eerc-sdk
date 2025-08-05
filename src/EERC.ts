@@ -6,6 +6,7 @@ import {
   type PublicClient,
   type WalletClient,
   decodeFunctionData,
+  decodeEventLog,
   erc20Abi,
   isAddress,
 } from "viem";
@@ -25,6 +26,7 @@ import type {
 } from "./hooks/types";
 import {
   BURN_USER,
+  DEPOSIT_EVENT,
   DEPOSIT_WITH_MESSAGE_ABI,
   ENCRYPTED_ERC_ABI,
   MESSAGES,
@@ -37,6 +39,7 @@ import {
   REGISTRAR_ABI,
   SNARK_FIELD_SIZE,
   TRANSFER_WITH_MESSAGE_ABI,
+  WITHDRAW_EVENT,
   WITHDRAW_WITH_MESSAGE_ABI,
 } from "./utils";
 
@@ -975,81 +978,84 @@ export class EERC {
     if (!this.decryptionKey) throw new Error("Missing decryption key!");
 
     try {
-      const tx = await this.client.getTransaction({
+      const receipt = await this.client.getTransactionReceipt({
         hash: transactionHash as `0x${string}`,
       });
 
-      // Get logs for this specific transaction from our contract
-      const logs = await this.client.getLogs({
-        address: this.contractAddress,
-        fromBlock: tx.blockNumber,
-        toBlock: tx.blockNumber,
-        // Don't filter by specific events - get all logs from this block for our contract
-      });
+      // Filter logs to only those from our EERC contract
+      const contractLogs = receipt.logs.filter(log => 
+        log.address.toLowerCase() === this.contractAddress.toLowerCase()
+      );
 
-      // Filter logs to only those from our transaction
-      const txLogs = logs.filter(log => log.transactionHash === transactionHash);
-
-      if (!txLogs || txLogs.length === 0) {
-        throw new Error("No logs found for this transaction");
+      if (!contractLogs || contractLogs.length === 0) {
+        return null;
       }
 
-      // Look for events with auditorPCT (encrypted amounts we can decrypt)
-      for (const log of txLogs) {
-        // Check if this log matches any of our known events
-        const eventSignatures = {
-          [PRIVATE_TRANSFER_EVENT.name]: 'PrivateTransfer',
-          [PRIVATE_MINT_EVENT.name]: 'PrivateMint', 
-          [PRIVATE_BURN_EVENT.name]: 'PrivateBurn',
-        };
+      // Define event types to check
+      const eventTypes = [
+        { event: PRIVATE_TRANSFER_EVENT, name: 'Transfer' },
+        { event: DEPOSIT_EVENT, name: 'Deposit' },
+        { event: WITHDRAW_EVENT, name: 'Withdraw' }
+      ];
 
-        const eventName = eventSignatures[log.eventName || ''];
-        if (!eventName) continue;
+      // Process each contract log
+      for (const log of contractLogs) {
+        // Try to decode with each event type
+        for (const { event, name } of eventTypes) {
+          try {
+            const decodedLog = decodeEventLog({
+              abi: [event],
+              data: log.data,
+              topics: log.topics,
+            });
 
-        // Try to extract auditorPCT from the log
-        const auditorPCT = (log as any)?.args?.auditorPCT as bigint[];
-        if (!auditorPCT || auditorPCT?.length !== 7) continue;
+            let amount: string;
+            let receiver: `0x${string}` | null = null;
+            let sender: `0x${string}` = receipt.from;
 
-        // Decrypt the amount
-        const decryptedAmount = this.decryptPCT(auditorPCT);
-        
-        // Decode the transaction input to get additional details
-        const decodedInputs = decodeFunctionData({
-          abi: this.encryptedErcAbi,
-          data: tx.input,
-        });
+            // Handle different event types
+            if (name === 'Deposit') {
+              // Deposit events have plain text amount, no decryption needed
+              amount = ((decodedLog.args as any)?.amount as bigint)?.toString() || "0";
+              receiver = receipt.to; // For deposits, receiver is the contract
+            } else if (name === 'Withdraw') {
+              // Withdraw events have both plain amount and auditorPCT, use auditorPCT if available
+              const auditorPCT = (decodedLog.args as any)?.auditorPCT as bigint[];
+              if (auditorPCT && auditorPCT?.length === 7) {
+                const decryptedAmount = this.decryptPCT(auditorPCT);
+                amount = decryptedAmount.toString();
+              } else {
+                // Fallback to plain amount if auditorPCT not available
+                amount = ((decodedLog.args as any)?.amount as bigint)?.toString() || "0";
+              }
+              receiver = receipt.from; // For withdraws, receiver is the user
+            } else if (name === 'Transfer') {
+              // Private Transfer events - require auditorPCT
+              const auditorPCT = (decodedLog.args as any)?.auditorPCT as bigint[];
+              if (!auditorPCT || auditorPCT?.length !== 7) continue;
 
-        return {
-          transactionHash: transactionHash as `0x${string}`,
-          amount: decryptedAmount.toString(),
-          sender: tx.from,
-          type: eventName.replace("Private", ""),
-          receiver:
-            decodedInputs?.functionName === "privateBurn"
-              ? tx.to
-              : (decodedInputs?.args?.[0] as `0x${string}`) || null,
-        };
-      }
+              // Decrypt the amount
+              const decryptedAmount = this.decryptPCT(auditorPCT);
+              amount = decryptedAmount.toString();
+              
+              // For transfers, get from/to from the event args
+              sender = (decodedLog.args as any)?.from as `0x${string}` || receipt.from;
+              receiver = (decodedLog.args as any)?.to as `0x${string}` || null;
+            } else {
+              continue; // Skip unknown event types
+            }
 
-      // If no auditorPCT found, check for deposit/withdraw events which might have different structure
-      // Look for Deposit/Withdraw events that might not have auditorPCT but have other encrypted data
-      for (const log of txLogs) {
-        if (log.eventName === 'Deposit' || log.eventName === 'Withdraw') {
-          // For deposits/withdraws, we might need to look at the amountPCT or other encrypted fields
-          // This would need to be customized based on the actual event structure
-          const decodedInputs = decodeFunctionData({
-            abi: this.encryptedErcAbi,
-            data: tx.input,
-          });
-
-          // Try to get amount from the transaction inputs or logs
-          return {
-            transactionHash: transactionHash as `0x${string}`,
-            amount: "Unknown", // Would need to decrypt from different fields
-            sender: tx.from,
-            type: log.eventName,
-            receiver: tx.to || null,
-          };
+            return {
+              transactionHash: transactionHash as `0x${string}`,
+              amount,
+              sender,
+              type: name,
+              receiver,
+            };
+          } catch {
+            // Continue to next event type if this one fails
+            continue;
+          }
         }
       }
 
