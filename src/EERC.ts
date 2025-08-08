@@ -1019,22 +1019,16 @@ export class EERC {
               amount = ((decodedLog.args as any)?.amount as bigint)?.toString() || "0";
               receiver = receipt.to; // For deposits, receiver is the contract
             } else if (name === 'Withdraw') {
-              // Withdraw events have both plain amount and auditorPCT, use auditorPCT if available
-              const auditorPCT = (decodedLog.args as any)?.auditorPCT as bigint[];
-              if (auditorPCT && auditorPCT?.length === 7) {
-                const decryptedAmount = this.decryptPCT(auditorPCT);
-                amount = decryptedAmount.toString();
-              } else {
-                // Fallback to plain amount if auditorPCT not available
-                amount = ((decodedLog.args as any)?.amount as bigint)?.toString() || "0";
-              }
+              // For withdraws, the plain amount IS the correct withdrawn amount from the ZK proof
+              // The auditorPCT is for the auditor's compliance tracking, not for displaying amounts
+              amount = ((decodedLog.args as any)?.amount as bigint)?.toString() || "0";
               receiver = receipt.from; // For withdraws, receiver is the user
             } else if (name === 'Transfer') {
-              // Private Transfer events - require auditorPCT
+              // Private Transfer events - require auditorPCT for decryption
               const auditorPCT = (decodedLog.args as any)?.auditorPCT as bigint[];
               if (!auditorPCT || auditorPCT?.length !== 7) continue;
 
-              // Decrypt the amount
+              // Decrypt the amount from auditorPCT
               const decryptedAmount = this.decryptPCT(auditorPCT);
               amount = decryptedAmount.toString();
               
