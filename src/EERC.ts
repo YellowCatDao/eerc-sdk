@@ -998,6 +998,16 @@ export class EERC {
         { event: WITHDRAW_EVENT, name: 'Withdraw' }
       ];
 
+      // Debug all transactions
+      console.log(`🔍 [${transactionHash}] Contract logs found:`, contractLogs.length);
+      contractLogs.forEach((log, i) => {
+        console.log(`📋 [${transactionHash}] Log ${i}:`, {
+          address: log.address,
+          topics: log.topics,
+          data: log.data
+        });
+      });
+
       // Process each contract log
       for (const log of contractLogs) {
         // Try to decode with each event type
@@ -1009,6 +1019,8 @@ export class EERC {
               topics: log.topics,
             });
 
+            console.log(`✅ [${transactionHash}] Successfully decoded as ${name} event:`, decodedLog);
+
             let amount: string;
             let receiver: `0x${string}` | null = null;
             let sender: `0x${string}` = receipt.from;
@@ -1018,11 +1030,15 @@ export class EERC {
               // Deposit events have plain text amount, no decryption needed
               amount = ((decodedLog.args as any)?.amount as bigint)?.toString() || "0";
               receiver = receipt.to; // For deposits, receiver is the contract
+              
+              console.log(`💰 [${transactionHash}] Processing DEPOSIT: amount=${amount}, receiver=${receiver}`);
             } else if (name === 'Withdraw') {
               // For withdraws, the plain amount IS the correct withdrawn amount from the ZK proof
               // The auditorPCT is for the auditor's compliance tracking, not for displaying amounts
               amount = ((decodedLog.args as any)?.amount as bigint)?.toString() || "0";
               receiver = receipt.from; // For withdraws, receiver is the user
+              
+              console.log(`💰 [${transactionHash}] Processing WITHDRAW: amount=${amount}, receiver=${receiver}`);
             } else if (name === 'Transfer') {
               // Private Transfer events - require auditorPCT for decryption
               const auditorPCT = (decodedLog.args as any)?.auditorPCT as bigint[];
@@ -1035,6 +1051,8 @@ export class EERC {
               // For transfers, get from/to from the event args
               sender = (decodedLog.args as any)?.from as `0x${string}` || receipt.from;
               receiver = (decodedLog.args as any)?.to as `0x${string}` || null;
+              
+              console.log(`💰 [${transactionHash}] Processing TRANSFER: amount=${amount}, sender=${sender}, receiver=${receiver}`);
             } else {
               continue; // Skip unknown event types
             }
@@ -1046,8 +1064,9 @@ export class EERC {
               type: name,
               receiver,
             };
-          } catch {
+          } catch (decodeError) {
             // Continue to next event type if this one fails
+            console.log(`❌ [${transactionHash}] Failed to decode as ${name}:`, decodeError);
             continue;
           }
         }
