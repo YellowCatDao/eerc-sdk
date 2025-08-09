@@ -195,8 +195,11 @@ export class EERC {
     try {
       logMessage("Registering user to the contract");
 
-      // message to sign
-      const key = await this.generateDecryptionKey();
+      // generate or use existing decryption key
+      let key = this.decryptionKey;
+      if (!key) {
+        key = await this.generateDecryptionKey();
+      }
       const formatted = formatKeyForCurve(key);
       const publicKey = this.curve.generatePublicKey(formatted);
 
